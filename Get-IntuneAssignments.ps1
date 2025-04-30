@@ -2,7 +2,7 @@
 
 <#PSScriptInfo
 
-.VERSION 1.0.3
+.VERSION 1.0.4
 
 .GUID 3b9c9df5-3b5f-4c1a-9a6c-097be91fa292
 
@@ -52,6 +52,10 @@ Initial release - Get all Intune Configuration Profile assignments
     - Remediation Scripts
     - Device Management Scripts
     - Autopilot Profiles
+- Shows included and excluded groups for each assignment
+- Displays filter information if configured
+- Export results to CSV
+- Filter by specific Azure AD group
 
 .PARAMETER OutputFile
     Path to export the results as CSV. If not specified, results will be displayed in console.
@@ -72,7 +76,7 @@ Initial release - Get all Intune Configuration Profile assignments
     Returns assignments that include or exclude the specified group.
 
 .NOTES
-    Version:        1.0.3
+    Version:        1.0.4
     Author:         Amir Joseph Sayes
     Company:        amirsayes.co.uk
     Creation Date:  2025-04-30

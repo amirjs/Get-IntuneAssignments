@@ -1,8 +1,8 @@
-#Requires -Version 5.1
+#Requires -Version 7.1
 
 <#PSScriptInfo
 
-.VERSION 1.0.1
+.VERSION 1.0.3
 
 .GUID 3b9c9df5-3b5f-4c1a-9a6c-097be91fa292
 
@@ -41,7 +41,7 @@ Initial release - Get all Intune Configuration Profile assignments
     Retrieves all Intune Configuration Profile assignments.
 
 .DESCRIPTION
-    This script retrieves assignments for various Intune configuration types including:
+    This script retrieves assignments and filters for various Intune configuration types including:
     - Device Configuration Profiles
     - Compliance Policies
     - Security Baselines
@@ -72,7 +72,7 @@ Initial release - Get all Intune Configuration Profile assignments
     Returns assignments that include or exclude the specified group.
 
 .NOTES
-    Version:        1.0.0
+    Version:        1.0.3
     Author:         Amir Joseph Sayes
     Company:        amirsayes.co.uk
     Creation Date:  2025-04-30
@@ -747,17 +747,22 @@ foreach ($module in $requiredModules) {
 
 if ($modulesNeedingInstall.Count -gt 0) {
     Write-Host "The following modules need to be installed (version $script:GraphModuleVersion): $($modulesNeedingInstall -join ', ')" -ForegroundColor Yellow
-    Write-Host "Installing required modules..." -ForegroundColor Cyan
-    
-    foreach ($module in $modulesNeedingInstall) {
-        try {
-            Write-Host "Installing $module version $script:GraphModuleVersion..." -ForegroundColor Yellow
-            Install-Module -Name $module -RequiredVersion $script:GraphModuleVersion -Force -AllowClobber -Scope CurrentUser -ErrorAction Stop
-            Write-Host "Successfully installed $module" -ForegroundColor Green
-        } catch {
-            Write-Error "Failed to install module $module. Error: $_"
-            return
+    $userConsent = Read-Host "Do you want to proceed with installing the required modules? (Y/N)"
+    if ($userConsent -match '^[Yy]$') {
+        Write-Host "Installing required modules..." -ForegroundColor Cyan
+        foreach ($module in $modulesNeedingInstall) {
+            try {
+                Write-Host "Installing $module version $script:GraphModuleVersion..." -ForegroundColor Yellow
+                Install-Module -Name $module -RequiredVersion $script:GraphModuleVersion -Force -AllowClobber -Scope CurrentUser -ErrorAction Stop
+                Write-Host "Successfully installed $module" -ForegroundColor Green
+            } catch {
+                Write-Error "Failed to install module $module. Error: $_"
+                return
+            }
         }
+    } else {
+        Write-Host "Module installation canceled by user. Exiting script." -ForegroundColor Red
+        return
     }
 }
 
@@ -844,6 +849,7 @@ if ($finalResults.Count -gt 0) {
         @{Name='ExcludedGroups';Expression={$_.ExcludedGroups -join '; '}} -Wrap -AutoSize 
 
     Write-Host "`nFound $($finalResults.Count) policies with assignments" -ForegroundColor Green
+    write-host "If not all columns are visible, use -OutputFile to export to CSV" -ForegroundColor Yellow
 
     # Export to CSV if OutputFile is specified
     if ($OutputFile) {

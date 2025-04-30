@@ -1,9 +1,8 @@
 #Requires -Version 5.1
-#Requires -Modules Microsoft.Graph.Authentication, Microsoft.Graph.Beta.DeviceManagement, Microsoft.Graph.Beta.Groups, Microsoft.Graph.Beta.Devices.CorporateManagement, Microsoft.Graph.Beta.DeviceManagement.Enrollment
 
 <#PSScriptInfo
 
-.VERSION 1.0.0
+.VERSION 1.0.1
 
 .GUID 3b9c9df5-3b5f-4c1a-9a6c-097be91fa292
 
@@ -719,30 +718,60 @@ function Get-IntuneWindowsInformationProtectionPolicyAssignment {
 }
 #endregion
 
-# Check if the relevant modules are installed and if not install them
-$modules = @(
-    "Microsoft.Graph.authentication",
+#region Module Installation
+
+# Module version configuration
+$script:GraphModuleVersion = "2.25.0"
+
+$requiredModules = @(
+    "Microsoft.Graph.Authentication",
     "Microsoft.Graph.Beta.DeviceManagement",
     "Microsoft.Graph.Beta.Groups",
     "Microsoft.Graph.Beta.Devices.CorporateManagement",
     "Microsoft.Graph.Beta.DeviceManagement.Enrollment"
 )
 
-try {
-    foreach ($module in $modules) {
-        if (-not(Get-InstalledModule -Name $module -ErrorAction SilentlyContinue)) {
-            Write-Verbose "Installing module $module..."
-            Install-Module -Name $module -Force -Scope CurrentUser -RequiredVersion 2.25.0
+Write-Host "Checking required modules (version $script:GraphModuleVersion)..." -ForegroundColor Cyan
+$modulesNeedingInstall = @()
+
+foreach ($module in $requiredModules) {
+    try {
+        $existingModule = Get-Module -Name $module -ListAvailable | Where-Object { $_.Version -eq $script:GraphModuleVersion }
+        if (-not $existingModule) {
+            $modulesNeedingInstall += $module
         }
-        if (-not (Get-Module -Name $module -ErrorAction SilentlyContinue)) {
-            Write-Verbose "Importing module $module..."
-            Import-Module -Name $module -Force -RequiredVersion 2.25.0
+    } catch {
+        Write-Warning "Error checking module $module`: $_"
+    }
+}
+
+if ($modulesNeedingInstall.Count -gt 0) {
+    Write-Host "The following modules need to be installed (version $script:GraphModuleVersion): $($modulesNeedingInstall -join ', ')" -ForegroundColor Yellow
+    Write-Host "Installing required modules..." -ForegroundColor Cyan
+    
+    foreach ($module in $modulesNeedingInstall) {
+        try {
+            Write-Host "Installing $module version $script:GraphModuleVersion..." -ForegroundColor Yellow
+            Install-Module -Name $module -RequiredVersion $script:GraphModuleVersion -Force -AllowClobber -Scope CurrentUser -ErrorAction Stop
+            Write-Host "Successfully installed $module" -ForegroundColor Green
+        } catch {
+            Write-Error "Failed to install module $module. Error: $_"
+            return
         }
     }
-} catch {
-    Write-Error "Failed to install or import required modules: $_"
-    return
 }
+
+# Import all required modules with specific version
+foreach ($module in $requiredModules) {
+    try {
+        Import-Module -Name $module -RequiredVersion $script:GraphModuleVersion -Force -ErrorAction Stop
+        Write-Verbose "Successfully imported $module version $script:GraphModuleVersion"
+    } catch {
+        Write-Error "Failed to import module $module. Error: $_"
+        return
+    }
+}
+#endregion
 
 # Connect to Microsoft Graph if not already connected
 try {
@@ -808,12 +837,12 @@ foreach ($step in $processSteps) {
 # Output results
 $finalResults = @($results)
 if ($finalResults.Count -gt 0) {
-    # Always display results in console
+    # Always display results in console with all columns visible
     Write-Host "`nPolicy Assignments:" -ForegroundColor Green
-    $finalResults | Format-Table -AutoSize DisplayName, ProfileType, 
+    $finalResults | Format-Table -Property DisplayName, ProfileType, 
         @{Name='IncludedGroups';Expression={$_.IncludedGroups -join '; '}},
-        @{Name='ExcludedGroups';Expression={$_.ExcludedGroups -join '; '}}
-    
+        @{Name='ExcludedGroups';Expression={$_.ExcludedGroups -join '; '}} -Wrap -AutoSize 
+
     Write-Host "`nFound $($finalResults.Count) policies with assignments" -ForegroundColor Green
 
     # Export to CSV if OutputFile is specified

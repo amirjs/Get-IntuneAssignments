@@ -10,7 +10,7 @@ Install-Script -Name Get-IntuneAssignments
 
 ## Requirements
 
-- PowerShell 5.1 or higher
+- PowerShell 7.1 or higher
 - Microsoft Graph PowerShell SDK modules (will be automatically installed if missing):
   - Microsoft.Graph.Authentication
   - Microsoft.Graph.Beta.DeviceManagement

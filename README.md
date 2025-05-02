@@ -42,7 +42,7 @@ Get-IntuneAssignments -GroupName "Pilot Users" -OutputFile "C:\temp\Pilot Users 
   - Security Baselines
   - Administrative Templates
   - App Protection Policies
-  - App Configuration Policies
+  - Managed Device App Deployments (W32, LOB, Store, etc)
   - Windows Information Protection Policies
   - Remediation Scripts
   - Device Management Scripts

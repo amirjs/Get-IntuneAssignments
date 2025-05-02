@@ -2,7 +2,7 @@
 
 <#PSScriptInfo
 
-.VERSION 1.0.8
+.VERSION 1.0.9
 
 .GUID 3b9c9df5-3b5f-4c1a-9a6c-097be91fa292
 
@@ -77,7 +77,7 @@ Initial release - Get all Intune Configuration Profile assignments
     Returns assignments that include or exclude the specified group.
 
 .NOTES
-    Version:        1.0.8
+    Version:        1.0.9
     Author:         Amir Joseph Sayes
     Company:        amirsayes.co.uk
     Creation Date:  2025-04-30
@@ -939,13 +939,27 @@ $results = @()
 $groupId = $null
 if ($GroupName) {
     try {
-        $group = Get-MgBetaGroup -Filter "DisplayName eq '$GroupName'"
+        $group = Get-MgBetaGroup -Search "displayName:$GroupName" -CountVariable c -ConsistencyLevel eventual -All     
         if (-not $group) {
             Write-Error "Group '$GroupName' not found."
             return
         }
-        $groupId = $group.Id
-        Write-Host "Processing assignments for group: $GroupName" -ForegroundColor Green
+        # if more than one $group is found, prompt user to select one from a list of numbers and then assigne the actual object to $groupId
+        if ($c -gt 1) {
+            Write-Host "Multiple groups found. Please select one:" -ForegroundColor Yellow
+            $group | ForEach-Object { Write-Host "$($_.Id): $($_.DisplayName)" -ForegroundColor Cyan }
+            $selectedGroupId = Read-Host "Enter the ID of the group you want to use"
+            $groupId= ($group | Where-Object { $_.Id -eq $selectedGroupId }).Id
+            $groupDisplayName= ($group | Where-Object { $_.Id -eq $selectedGroupId }).DisplayName
+            if (-not $groupId) {
+                Write-Error "Invalid group ID selected."
+                return
+            }
+        } else {
+            $groupId = $group.Id
+            $groupDisplayName = $group.DisplayName
+        }        
+        Write-Host "Processing assignments for group: $groupDisplayName and ID: $groupId" -ForegroundColor Green
     } catch {
         Write-Error "Failed to get group information: $_"
         return

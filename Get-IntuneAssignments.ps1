@@ -2,7 +2,7 @@
 
 <#PSScriptInfo
 
-.VERSION 1.0.7
+.VERSION 1.0.8
 
 .GUID 3b9c9df5-3b5f-4c1a-9a6c-097be91fa292
 
@@ -48,7 +48,7 @@ Initial release - Get all Intune Configuration Profile assignments
     - Security Baselines
     - Administrative Templates
     - App Protection Policies
-    - App Configuration Policies
+    - Apps Assignments
     - Windows Information Protection Policies
     - Remediation Scripts
     - Device Management Scripts
@@ -77,7 +77,7 @@ Initial release - Get all Intune Configuration Profile assignments
     Returns assignments that include or exclude the specified group.
 
 .NOTES
-    Version:        1.0.7
+    Version:        1.0.8
     Author:         Amir Joseph Sayes
     Company:        amirsayes.co.uk
     Creation Date:  2025-04-30
@@ -183,7 +183,7 @@ function Get-IntuneAppProtectionAssignment {
     }
 }
 
-function Get-IntuneManagedDeviceAppConfigurationAssignment {
+function Get-IntuneManagedDeviceAppAssignment {
     param (
         [Parameter(Mandatory = $false)]
         [string]$displayName,
@@ -191,63 +191,127 @@ function Get-IntuneManagedDeviceAppConfigurationAssignment {
         [string]$groupId
     )
 
+    # Get Mobile Apps instead of App Configurations
     if ($displayName) {
-        $AppConfiguration = Get-MgBetaDeviceAppManagementMobileAppConfiguration -Filter "displayName eq '$displayName'" -ExpandProperty "assignments"
+        $MobileApps = Get-MgBetaDeviceAppManagementMobileApp -Filter "displayName eq '$displayName'" -ErrorAction SilentlyContinue
     } else {
-        $AppConfiguration = Get-MgBetaDeviceAppManagementMobileAppConfiguration -All -ExpandProperty "assignments"
+        $MobileApps = Get-MgBetaDeviceAppManagementMobileApp -All -ErrorAction SilentlyContinue
     }
 
-    foreach ($config in $AppConfiguration) {
+    if ($null -eq $MobileApps) {
+        # No mobile apps found matching the criteria, return nothing for this function call
+        return
+    }
+
+    # Process each app
+    foreach ($app in $MobileApps) {
+        # Get assignments for this specific app using Invoke-MgGraphRequest
+        # App assignments are under /deviceAppManagement/mobileApps/{appId}/assignments
+        $uri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps('$($app.Id)')/assignments"
+        try {
+            # Added -Headers for eventual consistency, similar to App Protection Policy function
+            $assignmentsResult = Invoke-MgGraphRequest -Uri $uri -Method Get -Headers @{ConsistencyLevel = "eventual"} -ErrorAction Stop
+            $assignments = $assignmentsResult.value
+        } catch {
+            # Silently continue if assignments fail to load for an app
+            # Write-Warning "Failed to get assignments for app '$($app.DisplayName)' ($($app.Id)): $_"
+            continue
+        }
+
+        if ($null -eq $assignments -or $assignments.Count -eq 0) {
+            # No assignments found for this app
+            continue
+        }
+
         $includedGroups = @()
-        $excludedGroups = @()
-        $FilterName = @()
+        # Excluded groups are not directly part of the assignment target in the same way for apps.
+        # We will only report included groups/targets.
+        $hasMatchingAssignment = $false # Flag to track if any assignment matches the group filter
 
-        $assignments = $config.Assignments
         foreach ($assignment in $assignments) {
-            # Skip if we're looking for a specific group and this isn't it
-            if ($groupId -and $assignment.Target.AdditionalProperties.groupId -ne $groupId) {
-                continue
+            $CurrentFilterName = $null
+            $CurrentIncludedGroup = $null
+            $isMatch = $false # Flag for this specific assignment
+
+            # Determine target type and check group filter if applicable
+            if ($assignment.target.'@odata.type' -eq '#microsoft.graph.groupAssignmentTarget') {
+                # Check if filtering by group ID
+                if ($groupId) {
+                    # Only proceed if this assignment targets the specified group ID
+                    if ($assignment.target.groupId -eq $groupId) {
+                        # Attempt to get group display name
+                        $groupInfo = Get-MgBetaGroup -GroupId $assignment.target.groupId -ErrorAction SilentlyContinue
+                        $CurrentIncludedGroup = if ($groupInfo) { $groupInfo.DisplayName } else { "Group ID: $($assignment.target.groupId) (Not Found/No Access)" }
+                        $isMatch = $true
+                    } else {
+                        continue # Skip assignment if group ID doesn't match filter
+                    }
+                } else {
+                    # Not filtering by group ID, process this assignment
+                    $groupInfo = Get-MgBetaGroup -GroupId $assignment.target.groupId -ErrorAction SilentlyContinue
+                    $CurrentIncludedGroup = if ($groupInfo) { $groupInfo.DisplayName } else { "Group ID: $($assignment.target.groupId) (Not Found/No Access)" }
+                    $isMatch = $true
+                }
+
+                # Get filter name if applicable and group was determined
+                if ($isMatch) {
+                     if ($assignment.target.deviceAndAppManagementAssignmentFilterId -and $assignment.target.deviceAndAppManagementAssignmentFilterId -ne [guid]::Empty) {
+                        $filterInfo = Get-MgBetaDeviceManagementAssignmentFilter -DeviceAndAppManagementAssignmentFilterId $assignment.target.deviceAndAppManagementAssignmentFilterId -ErrorAction SilentlyContinue
+                        $CurrentFilterName = if ($filterInfo) { " | Filter: $($filterInfo.DisplayName)" } else { " | Filter ID: $($assignment.target.deviceAndAppManagementAssignmentFilterId) (Not Found/No Access)" }
+                    } else {
+                        $CurrentFilterName = " | No Filter"
+                    }
+                }
+
+            } elseif ($assignment.target.'@odata.type' -eq '#microsoft.graph.allDevicesAssignmentTarget') {
+                # Only include "All Devices" if not filtering by a specific group
+                if (-not $groupId) {
+                    $CurrentIncludedGroup = "All Devices"
+                    $isMatch = $true
+                    if ($assignment.target.deviceAndAppManagementAssignmentFilterId -and $assignment.target.deviceAndAppManagementAssignmentFilterId -ne [guid]::Empty) {
+                         $filterInfo = Get-MgBetaDeviceManagementAssignmentFilter -DeviceAndAppManagementAssignmentFilterId $assignment.target.deviceAndAppManagementAssignmentFilterId -ErrorAction SilentlyContinue
+                         $CurrentFilterName = if ($filterInfo) { " | Filter: $($filterInfo.DisplayName)" } else { " | Filter ID: $($assignment.target.deviceAndAppManagementAssignmentFilterId) (Not Found/No Access)" }
+                    } else {
+                        $CurrentFilterName = " | No Filter"
+                    }
+                } else {
+                    continue # Skip if filtering by group
+                }
+            } elseif ($assignment.target.'@odata.type' -eq '#microsoft.graph.allLicensedUsersAssignmentTarget') {
+                 # Only include "All Users" if not filtering by a specific group
+                if (-not $groupId) {
+                    $CurrentIncludedGroup = "All Users"
+                    $isMatch = $true
+                     if ($assignment.target.deviceAndAppManagementAssignmentFilterId -and $assignment.target.deviceAndAppManagementAssignmentFilterId -ne [guid]::Empty) {
+                         $filterInfo = Get-MgBetaDeviceManagementAssignmentFilter -DeviceAndAppManagementAssignmentFilterId $assignment.target.deviceAndAppManagementAssignmentFilterId -ErrorAction SilentlyContinue
+                         $CurrentFilterName = if ($filterInfo) { " | Filter: $($filterInfo.DisplayName)" } else { " | Filter ID: $($assignment.target.deviceAndAppManagementAssignmentFilterId) (Not Found/No Access)" }
+                    } else {
+                        $CurrentFilterName = " | No Filter"
+                    }
+                } else {
+                    continue # Skip if filtering by group
+                }
             }
 
-            if ($assignment.Target.AdditionalProperties.'@odata.type' -eq '#microsoft.graph.groupAssignmentTarget') {
-                $CurrentincludedGroup = (Get-MgbetaGroup -GroupId $($assignment.Target.AdditionalProperties.groupId)).DisplayName
-                if ($($assignment.Target.DeviceAndAppManagementAssignmentFilterId) -and $assignment.Target.DeviceAndAppManagementAssignmentFilterId -ne [guid]::Empty) {
-                    $FilterName = " | Filter: " + (Get-MgBetaDeviceManagementAssignmentFilter -DeviceAndAppManagementAssignmentFilterId $($assignment.Target.DeviceAndAppManagementAssignmentFilterId)).DisplayName
-                } else {
-                    $FilterName = " | No Filter"
-                }
-                $includedGroups += $CurrentincludedGroup + $FilterName
-            } elseif ($assignment.Target.AdditionalProperties.'@odata.type' -eq '#microsoft.graph.allDevicesAssignmentTarget') {
-                $CurrentincludedGroup = "All Devices"
-                if ($($assignment.Target.DeviceAndAppManagementAssignmentFilterId) -and $assignment.Target.DeviceAndAppManagementAssignmentFilterId -ne [guid]::Empty) {
-                    $FilterName = " | Filter: " + (Get-MgBetaDeviceManagementAssignmentFilter -DeviceAndAppManagementAssignmentFilterId $($assignment.Target.DeviceAndAppManagementAssignmentFilterId)).DisplayName
-                } else {
-                    $FilterName = " | No Filter"
-                }
-                $includedGroups += $CurrentincludedGroup + $FilterName
-            } elseif ($assignment.Target.AdditionalProperties.'@odata.type' -eq '#microsoft.graph.allLicensedUsersAssignmentTarget') {
-                $CurrentincludedGroup = "All Users"
-                if ($($assignment.Target.DeviceAndAppManagementAssignmentFilterId) -and $assignment.Target.DeviceAndAppManagementAssignmentFilterId -ne [guid]::Empty) {
-                    $FilterName = " | Filter: " + (Get-MgBetaDeviceManagementAssignmentFilter -DeviceAndAppManagementAssignmentFilterId $($assignment.Target.DeviceAndAppManagementAssignmentFilterId)).DisplayName
-                } else {
-                    $FilterName = " | No Filter"
-                }
-                $includedGroups += $CurrentincludedGroup + $FilterName
-            } elseif ($assignment.Target.AdditionalProperties.'@odata.type' -eq '#microsoft.graph.exclusionGroupAssignmentTarget') {
-                $excludedGroups += (Get-MgbetaGroup -GroupId $($assignment.Target.AdditionalProperties.groupId)).DisplayName
+            # If we identified an included group/target and it matches filters (if any), add it
+            if ($isMatch -and $CurrentIncludedGroup) {
+                 $includedGroups += $CurrentIncludedGroup + $CurrentFilterName
+                 $hasMatchingAssignment = $true # Mark that we found at least one relevant assignment for this app
             }
-        }
+        } # End foreach assignment
 
-        # Only return results if we found assignments (and they match our group filter if specified)
-        if ($includedGroups.Count -gt 0 -or $excludedGroups.Count -gt 0) {
+        # Only return results for this app if we found assignments that matched the criteria (especially the group filter if specified)
+        if ($hasMatchingAssignment) {
             [PSCustomObject]@{
-                DisplayName = $config.DisplayName
-                ProfileType = "Managed Device App Configuration"
+                DisplayName = $app.DisplayName
+                # Update ProfileType to reflect that this function now gets App Deployments
+                ProfileType = "Mobile App Deployment"
                 IncludedGroups = $includedGroups
-                ExcludedGroups = $excludedGroups
+                # ExcludedGroups property is set to null as it doesn't map directly for app assignments in this context
+                ExcludedGroups = $null
             }
         }
-    }
+    } # End foreach app
 }
 
 function Get-IntuneDeviceManagementSecurityBaselineAssignment {
@@ -890,7 +954,7 @@ if ($GroupName) {
 
 $processSteps = @(
     @{ Name = "App Protection Policies"; Function = "Get-IntuneAppProtectionAssignment" },
-    @{ Name = "Managed Device App Configurations"; Function = "Get-IntuneManagedDeviceAppConfigurationAssignment" },
+    @{ Name = "Managed Device Apps"; Function = "Get-IntuneManagedDeviceAppAssignment" },
     @{ Name = "Security Baselines"; Function = "Get-IntuneDeviceManagementSecurityBaselineAssignment" },
     @{ Name = "Device Compliance Policies"; Function = "Get-IntuneDeviceCompliancePolicyAssignment" },
     @{ Name = "Device Configurations"; Function = "Get-IntuneDeviceConfigurationAssignment" },

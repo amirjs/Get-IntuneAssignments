@@ -18,6 +18,19 @@ Install-Script -Name Get-IntuneAssignments
   - Microsoft.Graph.Beta.Devices.CorporateManagement
   - Microsoft.Graph.Beta.DeviceManagement.Enrollment
 
+## API Permissions
+
+The following Microsoft Graph API permissions are required:
+
+- DeviceManagementConfiguration.Read.All
+- DeviceManagementApps.Read.All
+- DeviceManagementManagedDevices.Read.All
+- DeviceManagementServiceConfig.Read.All
+- Group.Read.All
+- Directory.Read.All
+
+These permissions will be requested automatically when connecting to Microsoft Graph.
+
 ## Usage
 
 ```powershell

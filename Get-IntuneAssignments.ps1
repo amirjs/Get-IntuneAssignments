@@ -1,4 +1,4 @@
-#Requires -Version 7.1
+#Requires -Version 7
 
 <#PSScriptInfo
 
@@ -103,7 +103,7 @@ Initial release - Get all Intune Configuration Profile assignments
 
 .EXAMPLE
     $credential = New-Object System.Management.Automation.PSCredential("12345678-1234-1234-1234-123456789012", (ConvertTo-SecureString "YourClientSecret" -AsPlainText -Force))
-    Get-IntuneAssignments -AuthMethod ClientAppAccess -TenantId "contoso.onmicrosoft.com" -ClientSecretCredential $credential
+    Get-IntuneAssignments -AuthMethod ClientSecret -TenantId "contoso.onmicrosoft.com" -ClientSecretCredential $credential
     Connects using client secret authentication with a PSCredential object.
 
 .EXAMPLE
@@ -128,33 +128,31 @@ param (
     
     [Parameter(Mandatory = $false)]
     [ValidateNotNullOrEmpty()]
-    [string]$GroupName,
-
-    # Authentication Parameters    [Parameter(Mandatory = $false)]
-    [ValidateSet('Interactive', 'Certificate', 'ClientAppAccess', 'UserManagedIdentity', 'SystemManagedIdentity')]
+    [string]$GroupName,    # Authentication Parameters    
+    [Parameter(Mandatory = $false)]
+    [ValidateSet('Interactive', 'Certificate', 'ClientSecret', 'UserManagedIdentity', 'SystemManagedIdentity')]
     [string]$AuthMethod = 'Interactive',
 
     [Parameter(Mandatory = $false, ParameterSetName = 'Interactive')]
     [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
-    [Parameter(Mandatory = $true, ParameterSetName = 'ClientAppAccess')]
+    [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
     [Parameter(Mandatory = $true, ParameterSetName = 'UserManagedIdentity')]
     [Parameter(Mandatory = $true, ParameterSetName = 'Credential')]
     [string]$TenantId,
 
     [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
-    [Parameter(Mandatory = $false, ParameterSetName = 'ClientAppAccess')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'ClientSecret')]
     [Parameter(Mandatory = $true, ParameterSetName = 'UserManagedIdentity')]
     [string]$ClientId,
 
     [Parameter(ParameterSetName = 'Certificate')]
-    [string]$CertificateThumbprint,
-
-    [Parameter(ParameterSetName = 'Certificate')]
+    [string]$CertificateThumbprint,    [Parameter(ParameterSetName = 'Certificate')]
     [string]$CertificatePath,
 
-    [Parameter(Mandatory = $true, ParameterSetName = 'ClientAppAccess')]
+    [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
     [System.Management.Automation.PSCredential]
-    $ClientSecretCredential
+    $ClientSecretCredential   
+ 
 )
 
 #region Support Functions
@@ -1009,23 +1007,22 @@ try {
                 }
                 if ($CertificateThumbprint) {
                     $connectParams['CertificateThumbprint'] = $CertificateThumbprint
-                }
-
-                Write-Verbose "Using certificate authentication"
+                }                Write-Verbose "Using certificate authentication"
                 Connect-MgGraph @connectParams
-            }            
-            'ClientAppAccess' {
+            }              'ClientSecret' {
                 # Check if ClientSecretCredential is provided
                 if (-not($ClientSecretCredential -and $TenantId)) {
-                    throw "Both ClientSecretCredential object (which contains ClientID and ClientSecret) and TenantId must be provided for client app access authentication"
+                    throw "Both ClientSecretCredential object (which contains ClientID and ClientSecret) and TenantId must be provided for client secret authentication"
                 }
-                    $connectParams += @{
-                        TenantId = $TenantId
-                        ClientSecretCredential = $ClientSecretCredential
-                    }
-                    Write-Verbose "Using ClientSecretCredential for authentication"
-                    Connect-MgGraph @connectParams
+                
+                $connectParams += @{
+                    TenantId = $TenantId
+                    ClientSecretCredential = $ClientSecretCredential
                 }
+                
+                Write-Verbose "Using client secret authentication with credentials"
+                Connect-MgGraph @connectParams
+            }
             'UserManagedIdentity' {
                 $connectParams += @{
                     Identity = $true

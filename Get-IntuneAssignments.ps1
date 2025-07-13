@@ -64,6 +64,31 @@ Initial release - Get all Intune Configuration Profile assignments
 .PARAMETER GroupName
     Name of the Azure AD group to filter assignments. Only assignments that include or exclude this group will be returned.
 
+.PARAMETER AuthMethod
+    Authentication method to use when connecting to Microsoft Graph. Valid values are:
+    - Interactive (default)
+    - Certificate
+    - ClientAppAccess
+    - UserManagedIdentity
+    - SystemManagedIdentity
+
+.PARAMETER TenantId
+    The Azure AD tenant ID to connect to.
+
+.PARAMETER ClientId
+    The client ID (application ID) to use for certificate or managed identity authentication.
+
+.PARAMETER CertificateThumbprint
+    The thumbprint of the certificate to use for authentication. Requires ClientId and TenantId.
+
+.PARAMETER CertificatePath
+    The path to a certificate file to use for authentication. Requires ClientId and TenantId.
+
+.PARAMETER ClientSecretCredential
+    A PSCredential object containing the client secret credential information.
+    Username should be the ClientId, and Password should be the ClientSecret.
+    This is the recommended way to use client secret authentication.
+
 .EXAMPLE
     Get-IntuneAssignments
     Returns all Intune configuration assignments and displays them in the console.
@@ -75,6 +100,15 @@ Initial release - Get all Intune Configuration Profile assignments
 .EXAMPLE
     Get-IntuneAssignments -GroupName "Pilot Users"
     Returns assignments that include or exclude the specified group.
+
+.EXAMPLE
+    $credential = New-Object System.Management.Automation.PSCredential("12345678-1234-1234-1234-123456789012", (ConvertTo-SecureString "YourClientSecret" -AsPlainText -Force))
+    Get-IntuneAssignments -AuthMethod ClientAppAccess -TenantId "contoso.onmicrosoft.com" -ClientSecretCredential $credential
+    Connects using client secret authentication with a PSCredential object.
+
+.EXAMPLE
+    Get-IntuneAssignments -AuthMethod Certificate -TenantId "contoso.onmicrosoft.com" -ClientId "12345678-1234-1234-1234-123456789012" -CertificateThumbprint "1234567890ABCDEF1234567890ABCDEF12345678"
+    Connects using certificate authentication with a certificate thumbprint.
 
 .NOTES
     Version:        1.0.9
@@ -96,18 +130,20 @@ param (
     [ValidateNotNullOrEmpty()]
     [string]$GroupName,
 
-    # Authentication Parameters
-    [Parameter(Mandatory = $false)]
-    [ValidateSet('Interactive', 'Certificate', 'ClientSecret', 'ManagedIdentity')]
+    # Authentication Parameters    [Parameter(Mandatory = $false)]
+    [ValidateSet('Interactive', 'Certificate', 'ClientAppAccess', 'UserManagedIdentity', 'SystemManagedIdentity')]
     [string]$AuthMethod = 'Interactive',
 
     [Parameter(Mandatory = $false, ParameterSetName = 'Interactive')]
-    [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]    
-    [Parameter(Mandatory = $true, ParameterSetName = 'ManagedIdentity')]
+    [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
+    [Parameter(Mandatory = $true, ParameterSetName = 'ClientAppAccess')]
+    [Parameter(Mandatory = $true, ParameterSetName = 'UserManagedIdentity')]
     [Parameter(Mandatory = $true, ParameterSetName = 'Credential')]
     [string]$TenantId,
 
-    [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]    
+    [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'ClientAppAccess')]
+    [Parameter(Mandatory = $true, ParameterSetName = 'UserManagedIdentity')]
     [string]$ClientId,
 
     [Parameter(ParameterSetName = 'Certificate')]
@@ -116,10 +152,9 @@ param (
     [Parameter(ParameterSetName = 'Certificate')]
     [string]$CertificatePath,
 
-    [Parameter(Mandatory = $true, ParameterSetName = 'Credential')]
+    [Parameter(Mandatory = $true, ParameterSetName = 'ClientAppAccess')]
     [System.Management.Automation.PSCredential]
-    [System.Management.Automation.Credential()]
-    $Credential
+    $ClientSecretCredential
 )
 
 #region Support Functions
@@ -881,9 +916,6 @@ function Get-IntuneWindowsInformationProtectionPolicyAssignment {
 
 #region Module Installation
 
-# Module version configuration
-$script:GraphModuleVersion = "2.28.0"
-
 $requiredModules = @(
     "Microsoft.Graph.Authentication",
     "Microsoft.Graph.Beta.DeviceManagement",
@@ -892,17 +924,17 @@ $requiredModules = @(
     "Microsoft.Graph.Beta.DeviceManagement.Enrollment"    
 )
 
-Write-Host "Checking required modules (version $script:GraphModuleVersion)..." -ForegroundColor Cyan
+Write-Host "Checking required modules..." -ForegroundColor Cyan
 $modulesNeedingInstall = @()
 
 foreach ($module in $requiredModules) {
     try {        
-        $existingModule = Get-Module -Name $module -ListAvailable | Where-Object { $_.Version -eq $script:GraphModuleVersion }
+        $existingModule = Get-Module -Name $module -ListAvailable
         if (-not $existingModule) {
             $modulesNeedingInstall += $module
         }
         else {
-            Write-Host "Module $module version $script:GraphModuleVersion is already installed." -ForegroundColor Green
+            Write-Host "Module $module is already installed (Version: $($existingModule[0].Version))." -ForegroundColor Green
         }
     } catch {
         Write-Warning "Error checking module $module`: $_"
@@ -910,14 +942,14 @@ foreach ($module in $requiredModules) {
 }
 
 if ($modulesNeedingInstall.Count -gt 0) {
-    Write-Host "The following modules need to be installed (version $script:GraphModuleVersion): $($modulesNeedingInstall -join ', ')" -ForegroundColor Yellow
+    Write-Host "The following modules need to be installed: $($modulesNeedingInstall -join ', ')" -ForegroundColor Yellow
     $userConsent = Read-Host "Do you want to proceed with installing the required modules? (Y/N)"
     if ($userConsent -match '^[Yy]$') {
         Write-Host "Installing required modules..." -ForegroundColor Cyan
         foreach ($module in $modulesNeedingInstall) {
             try {
-                Write-Host "Installing $module version $script:GraphModuleVersion..." -ForegroundColor Yellow
-                Install-Module -Name $module -RequiredVersion $script:GraphModuleVersion -Force -AllowClobber -Scope CurrentUser -ErrorAction Stop
+                Write-Host "Installing $module..." -ForegroundColor Yellow
+                Install-Module -Name $module -Force -AllowClobber -Scope CurrentUser -ErrorAction Stop
                 Write-Host "Successfully installed $module" -ForegroundColor Green
             } catch {
                 Write-Error "Failed to install module $module. Error: $_"
@@ -930,25 +962,23 @@ if ($modulesNeedingInstall.Count -gt 0) {
     }
 }
 
-# Import all required modules with specific version
+# Import all required modules
 foreach ($module in $requiredModules) {
     try {
         # if module is not already loaded, import it
         if (-not (Get-Module -Name $module)) {
-            Write-Host "Importing $module version $script:GraphModuleVersion..." -ForegroundColor Yellow
-            Import-Module -Name $module -RequiredVersion $script:GraphModuleVersion -Force -ErrorAction Stop
-            write-host "Successfully imported $module version $script:GraphModuleVersion" -ForegroundColor Green
+            Write-Host "Importing $module..." -ForegroundColor Yellow
+            Import-Module -Name $module -Force -ErrorAction Stop
+            write-host "Successfully imported $module" -ForegroundColor Green
         } else {
             Write-Host "$module is already loaded." -ForegroundColor Green
             continue
         }
     } catch {
         Write-Error "Failed to import module $module. Error: $_"
-        return
-    }
+        return    }
 }
 #endregion
-
 
 # Connect to Microsoft Graph if not already connected
 try {
@@ -959,7 +989,7 @@ try {
             NoWelcome = $true
         }
 
-        switch ($PSCmdlet.ParameterSetName) {
+        switch ($AuthMethod) {
             'Interactive' {
                 if ($TenantId) { $connectParams['TenantId'] = $TenantId }
                 Connect-MgGraph @connectParams -Scopes "DeviceManagementServiceConfig.Read.All","DeviceManagementConfiguration.Read.All", "DeviceManagementManagedDevices.Read.All", "DeviceManagementApps.Read.All", "Group.Read.All"
@@ -983,21 +1013,36 @@ try {
 
                 Write-Verbose "Using certificate authentication"
                 Connect-MgGraph @connectParams
+            }            
+            'ClientAppAccess' {
+                # Check if ClientSecretCredential is provided
+                if (-not($ClientSecretCredential -and $TenantId)) {
+                    throw "Both ClientSecretCredential object (which contains ClientID and ClientSecret) and TenantId must be provided for client app access authentication"
+                }
+                    $connectParams += @{
+                        TenantId = $TenantId
+                        ClientSecretCredential = $ClientSecretCredential
+                    }
+                    Write-Verbose "Using ClientSecretCredential for authentication"
+                    Connect-MgGraph @connectParams
+                }
+            'UserManagedIdentity' {
+                $connectParams += @{
+                    Identity = $true
+                    TenantId = $TenantId
+                    ClientId = $ClientId
+                }
+                Write-Verbose "Using user-assigned managed identity authentication"
+                Connect-MgGraph @connectParams
             }
-            'ManagedIdentity' {
+            'SystemManagedIdentity' {
                 $connectParams += @{
                     Identity = $true
                     TenantId = $TenantId
                 }
+                Write-Verbose "Using system-assigned managed identity authentication"
                 Connect-MgGraph @connectParams
-            }
-            'Credential' {
-                $connectParams += @{
-                    TenantId = $TenantId
-                    Credential = $Credential
-                }
-                Connect-MgGraph @connectParams
-            }
+            }           
         }
 
         $context = Get-MgContext
@@ -1018,7 +1063,7 @@ try {
         Write-Host "Scopes: $($context.Scopes -join ', ')" -ForegroundColor Yellow
     }
     else {
-        if ($PSCmdlet.ParameterSetName -eq 'ManagedIdentity') {
+        if ($AuthMethod -eq 'UserManagedIdentity' -or $AuthMethod -eq 'SystemManagedIdentity') {
             Write-Host "Already connected to Microsoft Graph as: $((Get-MgContext).ManagedIdentityId)" -ForegroundColor Green
             write-host "Scope: $((Get-MgContext).Scopes)" -ForegroundColor Green
         } else {

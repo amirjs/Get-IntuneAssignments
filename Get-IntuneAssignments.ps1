@@ -1377,14 +1377,17 @@ foreach ($step in $processSteps) {
 # Output results
 $finalResults = @($results)
 if ($finalResults.Count -gt 0) {
-    # Always display results in console with all columns visible
-    Write-Host "`nPolicy Assignments:" -ForegroundColor Green
-    $finalResults | Format-Table -Property DisplayName, ProfileType, 
+    # Prepare the data for display and export
+    $outputData = $finalResults | Select-Object DisplayName, ProfileType, 
         @{Name='IncludedGroups';Expression={$_.IncludedGroups -join '; '}},
-        @{Name='ExcludedGroups';Expression={$_.ExcludedGroups -join '; '}} -Wrap -AutoSize 
+        @{Name='ExcludedGroups';Expression={$_.ExcludedGroups -join '; '}}
+    
+    # Display results in console with all columns visible
+    Write-Host "`nPolicy Assignments:" -ForegroundColor Green
+    $outputData | Format-Table -Wrap -AutoSize | Out-Host
 
     Write-Host "`nFound $($finalResults.Count) policies with assignments" -ForegroundColor Green
-    write-host "If not all columns are visible, use -OutputFile to export to CSV" -ForegroundColor Yellow
+    Write-Host "If not all columns are visible, use -OutputFile to export to CSV" -ForegroundColor Yellow
 
     # Export to CSV if OutputFile is specified
     if ($OutputFile) {
@@ -1395,15 +1398,15 @@ if ($finalResults.Count -gt 0) {
                 New-Item -ItemType Directory -Path $directory -Force | Out-Null
             }
             
-            $finalResults | Select-Object DisplayName, ProfileType, 
-                @{Name='IncludedGroups';Expression={$_.IncludedGroups -join '; '}},
-                @{Name='ExcludedGroups';Expression={$_.ExcludedGroups -join '; '}} |
-            Export-Csv -Path $OutputFile -NoTypeInformation -Force
+            $outputData | Export-Csv -Path $OutputFile -NoTypeInformation -Force
             Write-Host "Results exported to $OutputFile" -ForegroundColor Green
         } catch {
             Write-Error "Failed to export results to CSV: $_"
         }
     }
+    
+    # Return the raw data so it can be used with Out-GridView
+    return $outputData
 } else {
     Write-Host "No policies with assignments found" -ForegroundColor Yellow
 }

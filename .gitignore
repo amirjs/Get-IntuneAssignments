@@ -2,3 +2,5 @@ Dev/
 test.ps1
 test-auth-methods.ps1
 out.csv
+test-output.csv
+test-outgridview.ps1

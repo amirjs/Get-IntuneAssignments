@@ -5,7 +5,8 @@ PowerShell script to retrieve all Intune Configuration Profile assignments, incl
 ## Version 1.0.12 - November 2025
 
 **New Features:**
-- ✨ Added support for Device Enrollment Configurations
+- ✨ Added support for Device Enrollment Configurations Assignments
+- ✨ Added support for Intune Role Assignments and Cloud PC Role Assignments
 - ✨ Fixed Out-GridView compatibility - script now returns PowerShell objects instead of formatting objects
 - ✨ Results can now be properly used with `Out-GridView`, `Export-Csv`, and other PowerShell cmdlets
 - ✨ Improved output handling for better console display
@@ -20,14 +21,16 @@ Install-Script -Name Get-IntuneAssignments
 
 - PowerShell 7 or higher
 - Microsoft Graph PowerShell SDK modules (will be automatically installed if missing):
-  - Microsoft.Graph.Authentication
-  - Microsoft.Graph.Beta.DeviceManagement
-  - Microsoft.Graph.Beta.Groups
-  - Microsoft.Graph.Beta.Devices.CorporateManagement
-  - Microsoft.Graph.Beta.DeviceManagement.Enrollment
+    - DeviceManagementConfiguration.Read.All
+    - DeviceManagementApps.Read.All
+    - DeviceManagementManagedDevices.Read.All
+    - DeviceManagementServiceConfig.Read.All
+    - DeviceManagementScripts.Read.All
+    - Group.Read.All
+    - Directory.Read.All
+    - CloudPC.Read.All (for Cloud PC Role Assignments)
 
 ## API Permissions
-
 
 The following Microsoft Graph API permissions are required:
 
@@ -38,6 +41,7 @@ The following Microsoft Graph API permissions are required:
 - DeviceManagementScripts.Read.All
 - Group.Read.All
 - Directory.Read.All
+- CloudPC.Read.All
 
 These permissions will be requested automatically when connecting to Microsoft Graph.
 
@@ -99,7 +103,7 @@ Get-IntuneAssignments -AuthMethod Certificate -TenantId "contoso.onmicrosoft.com
   - Remediation Scripts
   - Device Management Scripts
   - Autopilot Profiles (v1)
-  - **Device Enrollment Configurations** ⭐ NEW in v1.0.12
+  - Device Enrollment Configurations 
     - Device Enrollment Limit Configurations
     - Device Enrollment Platform Restrictions
     - Windows Hello for Business Configurations
@@ -111,11 +115,17 @@ Get-IntuneAssignments -AuthMethod Certificate -TenantId "contoso.onmicrosoft.com
     - Windows Feature Update Profiles
     - Windows Update Rings
     - Windows Driver Update Profiles
+  - Intune Role Assignments
+    - Shows administrative role assignments and their resource scopes
+    - Displays both group and user assignments
+  -Cloud PC Role Assignments
+    - Windows 365 Cloud PC administrative role assignments
+    - Includes role definition names and directory scopes
 - Shows included and excluded groups for each assignment
 - Displays filter information if configured
 - Export results to CSV
 - Filter by specific Azure AD group
-- **Returns PowerShell objects** ⭐ NEW in v1.0.12 - compatible with `Out-GridView`, `Export-Csv`, and other cmdlets
+- **Returns PowerShell objects** - compatible with `Out-GridView`, `Export-Csv`, and other cmdlets
 
 ## Output Format
 
@@ -152,7 +162,20 @@ Contributions are welcome! Please submit a pull request.
 ## Changelog
 
 ### Version 1.0.12 - November 2025
+- ✨ Added support for Intune Role Assignments
+  - Shows administrative role assignments and their resource scopes
+  - Displays both group and user assignments
+- ✨ Added support for Cloud PC Role Assignments
+  - Windows 365 Cloud PC administrative role assignments
+  - Includes role definition names and directory scopes
 - ✨ Added support for Device Enrollment Configurations
+  - Device Enrollment Limit Configurations
+  - Device Enrollment Platform Restrictions
+  - Windows Hello for Business Configurations
+  - Enrollment Status Page (ESP) Configurations
+  - Windows Autopilot Enrollment Status Page
+  - Co-management Authority Configurations
+- ✨ Added CloudPC.Read.All permission to Graph scopes
 - ✨ Fixed Out-GridView compatibility - script now returns PowerShell objects instead of formatting objects
 - ✨ Results can now be used with `Out-GridView`, `Export-Csv`, and other PowerShell cmdlets
 

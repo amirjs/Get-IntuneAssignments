@@ -1672,7 +1672,7 @@ if ($finalResults.Count -gt 0) {
     
     # Display results in console with all columns visible
     Write-Host "`nPolicy Assignments:" -ForegroundColor Green
-    $outputData | Format-Table -Wrap -AutoSize | Out-Host
+    #$outputData | Format-Table -Wrap -AutoSize | Out-Host
 
     Write-Host "`nFound $($finalResults.Count) policies with assignments" -ForegroundColor Green
     Write-Host "If not all columns are visible, use -OutputFile to export to CSV" -ForegroundColor Yellow

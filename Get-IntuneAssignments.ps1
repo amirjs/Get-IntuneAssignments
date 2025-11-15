@@ -33,6 +33,9 @@ Microsoft.Graph.Beta.DeviceManagement.Enrollment
 
 .RELEASENOTES
 v1.0.12 - November 2025:
+        - Added support for Intune Role Assignments
+        - Added support for Cloud PC Role Assignments
+        - Added CloudPC.Read.All permission to Graph scopes
         - Added support for Device Enrollment Configurations
         - Fixed Out-GridView compatibility - script now returns PowerShell objects instead of formatting objects
         - Results can now be used with Out-GridView, Export-Csv, and other PowerShell cmdlets
@@ -71,6 +74,8 @@ v1.0.1 - Initial Release:
     - Device Management Scripts
     - Autopilot Profiles (v1)
     - Device Enrollment Configurations
+    - Role Assignments
+    - Cloud PC Role Assignments
     - Windows Update Policies:
       * Windows Quality Update Profiles
       * Windows Feature Update Profiles
@@ -85,6 +90,7 @@ v1.0.1 - Initial Release:
     - DeviceManagementScripts.Read.All
     - Group.Read.All
     - Directory.Read.All
+    - CloudPC.Read.All (for Cloud PC Role Assignments)
 
     - Shows included and excluded groups for each assignment
     - Displays filter information if configured
@@ -1244,6 +1250,196 @@ function Get-IntuneDeviceEnrollmentConfigurationAssignment {
         }
     }
 }
+
+function Get-IntuneRoleAssignment {
+    param (
+        [Parameter(Mandatory = $false)]
+        [string]$displayName,
+        [Parameter(Mandatory = $false)]
+        [string]$groupId
+    )
+
+    if ($displayName) {
+        $RoleAssignments = Get-MgBetaDeviceManagementRoleAssignment -Filter "displayName eq '$displayName'"
+    } else {
+        $RoleAssignments = Get-MgBetaDeviceManagementRoleAssignment -All
+    }
+
+    foreach ($roleAssignment in $RoleAssignments) {
+        $includedGroups = @()
+        $hasMatchingAssignment = $false
+
+        # Check if we're filtering by group and if this role assignment matches
+        if ($groupId) {
+            # Check if the group is in Members or ResourceScopes
+            $isInMembers = $roleAssignment.Members -contains $groupId
+            $isInScopes = $roleAssignment.ResourceScopes -contains $groupId
+            
+            if (-not ($isInMembers -or $isInScopes)) {
+                continue  # Skip this role assignment if the group isn't involved
+            }
+            $hasMatchingAssignment = $true
+        } else {
+            $hasMatchingAssignment = $true
+        }
+
+        # Get member names (assigned to) - can be users or groups
+        if ($roleAssignment.Members) {
+            foreach ($memberId in $roleAssignment.Members) {
+                try {
+                    $memberGroup = Get-MgBetaGroup -GroupId $memberId -ErrorAction SilentlyContinue
+                    if ($memberGroup) {
+                        $memberName = "$($memberGroup.DisplayName) (Member)"
+                    } else {
+                        # Could be a user, try to get user info
+                        $memberUser = Get-MgBetaUser -UserId $memberId -ErrorAction SilentlyContinue
+                        if ($memberUser) {
+                            $memberName = "$($memberUser.DisplayName) (User)"
+                        } else {
+                            $memberName = "$memberId (Member)"
+                        }
+                    }
+
+                    # Get resource scope for this member
+                    if ($roleAssignment.ResourceScopes) {
+                        foreach ($scopeId in $roleAssignment.ResourceScopes) {
+                            try {
+                                $scopeGroup = Get-MgBetaGroup -GroupId $scopeId -ErrorAction SilentlyContinue
+                                if ($scopeGroup) {
+                                    $includedGroups += "$memberName | Scope: $($scopeGroup.DisplayName)"
+                                } else {
+                                    $includedGroups += "$memberName | Scope: $scopeId"
+                                }
+                            } catch {
+                                $includedGroups += "$memberName | Scope: $scopeId"
+                            }
+                        }
+                    } else {
+                        $includedGroups += $memberName
+                    }
+                } catch {
+                    $includedGroups += "$memberId (Member)"
+                }
+            }
+        }
+
+        # Only return results if we found members (and they match our group filter if specified)
+        if ($hasMatchingAssignment -and $includedGroups.Count -gt 0) {
+            [PSCustomObject]@{
+                DisplayName = $roleAssignment.DisplayName
+                ProfileType = "Role Assignment"
+                IncludedGroups = $includedGroups
+                ExcludedGroups = @()  # Role assignments don't have exclusions
+            }
+        }
+    }
+}
+
+function Get-CloudPcRoleAssignment {
+    param (
+        [Parameter(Mandatory = $false)]
+        [string]$displayName,
+        [Parameter(Mandatory = $false)]
+        [string]$groupId
+    )
+
+    try {
+        if ($displayName) {
+            # Cloud PC role assignments don't support filtering by displayName directly
+            # We'll get all and filter in PowerShell
+            $RoleAssignments = Get-MgBetaRoleManagementCloudPcRoleAssignment -All | Where-Object { $_.DisplayName -eq $displayName }
+        } else {
+            $RoleAssignments = Get-MgBetaRoleManagementCloudPcRoleAssignment -All
+        }
+    } catch {
+        Write-Warning "Failed to retrieve Cloud PC role assignments. This might require additional permissions or the Cloud PC service may not be configured."
+        return
+    }
+
+    foreach ($roleAssignment in $RoleAssignments) {
+        $includedGroups = @()
+        $hasMatchingAssignment = $false
+
+        # Cloud PC role assignments use PrincipalIds (array) which contains the assigned user/group
+        # Check if we're filtering by group and if this role assignment matches
+        if ($groupId) {
+            # Check if the group is in the principals or directory scopes
+            $isInPrincipal = $roleAssignment.PrincipalIds -contains $groupId
+            $isInScopes = $roleAssignment.DirectoryScopeIds -contains $groupId
+            
+            if (-not ($isInPrincipal -or $isInScopes)) {
+                continue  # Skip this role assignment if the group isn't involved
+            }
+            $hasMatchingAssignment = $true
+        } else {
+            $hasMatchingAssignment = $true
+        }
+
+        # Get role definition name for better context
+        $roleName = "Cloud PC Role"
+        if ($roleAssignment.RoleDefinitionId) {
+            try {
+                $roleDefinition = Get-MgBetaRoleManagementCloudPcRoleDefinition -UnifiedRoleDefinitionId $roleAssignment.RoleDefinitionId -ErrorAction SilentlyContinue
+                if ($roleDefinition) {
+                    $roleName = $roleDefinition.DisplayName
+                }
+            } catch {
+                # If we can't get the role definition, use the ID
+                $roleName = "Cloud PC Role ($($roleAssignment.RoleDefinitionId))"
+            }
+        }
+
+        # Get principal names (assigned to) - can be users or groups
+        if ($roleAssignment.PrincipalIds) {
+            foreach ($principalId in $roleAssignment.PrincipalIds) {
+                try {
+                    $principalGroup = Get-MgBetaGroup -GroupId $principalId -ErrorAction SilentlyContinue
+                    if ($principalGroup) {
+                        $principalName = "$($principalGroup.DisplayName) (Member)"
+                    } else {
+                        # Could be a user, try to get user info
+                        $principalUser = Get-MgBetaUser -UserId $principalId -ErrorAction SilentlyContinue
+                        if ($principalUser) {
+                            $principalName = "$($principalUser.DisplayName) (User)"
+                        } else {
+                            $principalName = "$principalId (Member)"
+                        }
+                    }
+
+                    # Get directory scope names for this principal
+                    if ($roleAssignment.DirectoryScopeIds) {
+                        foreach ($scopeId in $roleAssignment.DirectoryScopeIds) {
+                            try {
+                                $scopeGroup = Get-MgBetaGroup -GroupId $scopeId -ErrorAction SilentlyContinue
+                                if ($scopeGroup) {
+                                    $includedGroups += "$principalName | Role: $roleName | Scope: $($scopeGroup.DisplayName)"
+                                } else {
+                                    $includedGroups += "$principalName | Role: $roleName | Scope: $scopeId"
+                                }
+                            } catch {
+                                $includedGroups += "$principalName | Role: $roleName | Scope: $scopeId"
+                            }
+                        }
+                    } else {
+                        $includedGroups += "$principalName | Role: $roleName"
+                    }
+                } catch {
+                    $includedGroups += "$principalId (Member) | Role: $roleName"
+                }
+            }
+        }
+
+        # Only return results if we found principals (and they match our group filter if specified)
+        if ($hasMatchingAssignment -and $includedGroups.Count -gt 0) {
+            [PSCustomObject]@{
+                DisplayName = if ($roleAssignment.DisplayName) { $roleAssignment.DisplayName } else { "Cloud PC Role Assignment" }
+                ProfileType = "Cloud PC Role Assignment"
+                IncludedGroups = $includedGroups
+                ExcludedGroups = @()  # Role assignments don't have exclusions
+            }
+        }
+    }
+}
 #endregion
 
 #region Module Installation
@@ -1253,7 +1449,8 @@ $requiredModules = @(
     "Microsoft.Graph.Beta.DeviceManagement",
     "Microsoft.Graph.Beta.Groups",
     "Microsoft.Graph.Beta.Devices.CorporateManagement",
-    "Microsoft.Graph.Beta.DeviceManagement.Enrollment"    
+    "Microsoft.Graph.Beta.DeviceManagement.Enrollment",
+    "Microsoft.Graph.Beta.DeviceManagement.Administration"       
 )
 
 Write-Host "Checking required modules..." -ForegroundColor Cyan
@@ -1324,7 +1521,7 @@ try {
         switch ($AuthMethod) {
             'Interactive' {
                 if ($TenantId) { $connectParams['TenantId'] = $TenantId }
-                Connect-MgGraph @connectParams -Scopes "DeviceManagementServiceConfig.Read.All","DeviceManagementConfiguration.Read.All", "DeviceManagementManagedDevices.Read.All", "DeviceManagementApps.Read.All", "Group.Read.All"
+                Connect-MgGraph @connectParams -Scopes "DeviceManagementServiceConfig.Read.All","DeviceManagementConfiguration.Read.All", "DeviceManagementManagedDevices.Read.All", "DeviceManagementApps.Read.All", "Group.Read.All", "CloudPC.Read.All"
             }
             'Certificate' {
                 if (-not $CertificateThumbprint) {
@@ -1450,7 +1647,9 @@ $processSteps = @(
     @{ Name = "Device Management Scripts"; Function = "Get-IntuneDeviceManagementScriptAssignment" },
     @{ Name = "Windows Information Protection Policies"; Function = "Get-IntuneWindowsInformationProtectionPolicyAssignment" },
     @{ Name = "Device Enrollment Configurations"; Function = "Get-IntuneDeviceEnrollmentConfigurationAssignment" },
-    @{ Name = "Windows Update Policies"; Function = "Get-IntuneWindowsUpdateAssignment" }
+    @{ Name = "Windows Update Policies"; Function = "Get-IntuneWindowsUpdateAssignment" },
+    @{ Name = "Role Assignments"; Function = "Get-IntuneRoleAssignment" },
+    @{ Name = "Cloud PC Role Assignments"; Function = "Get-CloudPcRoleAssignment" }
 )
 
 foreach ($step in $processSteps) {

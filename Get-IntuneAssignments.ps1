@@ -197,7 +197,9 @@ param (
     
     [Parameter(Mandatory = $false)]
     [ValidateNotNullOrEmpty()]
-    [string]$GroupName,    # Authentication Parameters    
+    [string]$GroupName,
+
+    # Authentication Parameters    
     [Parameter(Mandatory = $false)]
     [ValidateSet('Interactive', 'Certificate', 'ClientSecret', 'UserManagedIdentity', 'SystemManagedIdentity')]
     [string]$AuthMethod = 'Interactive',
@@ -206,7 +208,7 @@ param (
     [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
     [Parameter(Mandatory = $true, ParameterSetName = 'ClientSecret')]
     [Parameter(Mandatory = $true, ParameterSetName = 'UserManagedIdentity')]
-    [Parameter(Mandatory = $true, ParameterSetName = 'Credential')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'SystemManagedIdentity')]
     [string]$TenantId,
 
     [Parameter(Mandatory = $true, ParameterSetName = 'Certificate')]
@@ -1562,7 +1564,9 @@ try {
             'SystemManagedIdentity' {
                 $connectParams += @{
                     Identity = $true
-                    TenantId = $TenantId
+                }
+                if ($TenantId) {
+                    $connectParams['TenantId'] = $TenantId
                 }
                 Write-Verbose "Using system-assigned managed identity authentication"
                 Connect-MgGraph @connectParams

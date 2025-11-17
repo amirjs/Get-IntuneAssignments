@@ -182,14 +182,13 @@ v1.0.1 - Initial Release:
     Get-IntuneAssignments -AuthMethod Certificate -TenantId "contoso.onmicrosoft.com" -ClientId "12345678-1234-1234-1234-123456789012" -CertificateThumbprint "1234567890ABCDEF1234567890ABCDEF12345678" -GroupName "Pilot Users" -OutputFile "C:\temp\PilotUsersAssignments.csv"
     Retrieves assignments for a specific group using certificate authentication and exports to CSV.
 
-    Version:        1.0.12
-    Author:         Amir Joseph Sayes
-    Company:        amirsayes.co.uk
-    Creation Date:  2025-04-30
-    Last Updated:   2025-11-09
+.NOTES
     Requirements:   
     - PowerShell 7 or higher
-    - Microsoft Graph PowerShell SDK modules
+    - Microsoft Graph PowerShell SDK modules (automatically installed if missing)
+    
+    For the latest version and updates, visit:
+    https://github.com/amirjs/Get-IntuneAssignments
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'Interactive')]

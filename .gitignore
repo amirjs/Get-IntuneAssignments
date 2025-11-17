@@ -4,3 +4,4 @@ test-auth-methods.ps1
 out.csv
 test-output.csv
 test-outgridview.ps1
+outtest.csv

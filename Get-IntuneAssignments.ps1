@@ -2,7 +2,7 @@
 
 <#PSScriptInfo
 
-.VERSION 1.0.14
+.VERSION 1.0.15
 
 .GUID 3b9c9df5-3b5f-4c1a-9a6c-097be91fa292
 
@@ -32,6 +32,9 @@ Microsoft.Graph.Beta.DeviceManagement.Enrollment
 .EXTERNALSCRIPTDEPENDENCIES
 
 .RELEASENOTES
+
+v1.0.15 - November 2025:
+        - Added delimiter parameter for export-csv
 v1.0.14 - November 2025:
         - Fixed: Added missing DeviceManagementRBAC.Read.All permission for Intune Role Assignments
         - Fixed: Removed unnecessary Directory.Read.All permission from documentation
@@ -106,6 +109,9 @@ v1.0.1 - Initial Release:
 .PARAMETER OutputFile
     Path to export the results as CSV. If not specified, results will be displayed in console.
 
+.PARAMETER CsvDelimiter
+    Set delimiter to separate values in the output file. Default is a comma (,), but can be set to colon (:), semicolon (;) or pipe (|).
+
 .PARAMETER GroupName
     Name of the Azure AD group to filter assignments. Only assignments that include or exclude this group will be returned.
 
@@ -132,6 +138,18 @@ v1.0.1 - Initial Release:
     Username should be the ClientId, and Password should be the ClientSecret.
     This is the recommended way to use client secret authentication.
 
+.NOTES
+    Version:        1.0.15
+    Author:         Amir Joseph Sayes
+    Company:        amirsayes.co.uk
+    Creation Date:  2025-04-30
+    Last Updated:   2025-11-09
+    Requirements:   
+    - PowerShell 7 or higher
+    - Microsoft Graph PowerShell SDK modules (automatically installed if missing)
+    
+    For the latest version and updates, visit:
+    https://github.com/amirjs/Get-IntuneAssignments
 
 .EXAMPLE
     Get-IntuneAssignments
@@ -185,13 +203,6 @@ v1.0.1 - Initial Release:
     Get-IntuneAssignments -AuthMethod Certificate -TenantId "contoso.onmicrosoft.com" -ClientId "12345678-1234-1234-1234-123456789012" -CertificateThumbprint "1234567890ABCDEF1234567890ABCDEF12345678" -GroupName "Pilot Users" -OutputFile "C:\temp\PilotUsersAssignments.csv"
     Retrieves assignments for a specific group using certificate authentication and exports to CSV.
 
-.NOTES
-    Requirements:   
-    - PowerShell 7 or higher
-    - Microsoft Graph PowerShell SDK modules (automatically installed if missing)
-    
-    For the latest version and updates, visit:
-    https://github.com/amirjs/Get-IntuneAssignments
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'Interactive')]
@@ -199,6 +210,10 @@ param (
     [Parameter(Mandatory = $false)]
     [ValidateNotNullOrEmpty()]
     [string]$OutputFile,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateSet(',', ':', ';', '|')]
+    [string]$CsvDelimiter = ',',
     
     [Parameter(Mandatory = $false)]
     [ValidateNotNullOrEmpty()]
@@ -1695,7 +1710,7 @@ if ($finalResults.Count -gt 0) {
                 New-Item -ItemType Directory -Path $directory -Force | Out-Null
             }
             
-            $outputData | Export-Csv -Path $OutputFile -NoTypeInformation -Force
+            $outputData | Export-Csv -Path $OutputFile -Delimiter $CsvDelimiter -NoTypeInformation -Force
             Write-Host "Results exported to $OutputFile" -ForegroundColor Green
         } catch {
             Write-Error "Failed to export results to CSV: $_"

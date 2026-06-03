@@ -11,15 +11,8 @@ Install-Script -Name Get-IntuneAssignments
 ## Requirements
 
 - PowerShell 7 or higher
-- Microsoft Graph PowerShell SDK modules (will be automatically installed if missing):
-    - DeviceManagementConfiguration.Read.All
-    - DeviceManagementApps.Read.All
-    - DeviceManagementManagedDevices.Read.All
-    - DeviceManagementServiceConfig.Read.All
-    - DeviceManagementScripts.Read.All
-    - Group.Read.All
-    - DeviceManagementRBAC.Read.All (for Intune Role Assignments)
-    - CloudPC.Read.All (for Cloud PC Role Assignments and Cloud PC Provisioning Policies)
+- `Microsoft.Graph.Authentication` module only (automatically installed if missing)
+  - No other Microsoft Graph SDK modules are required — all policy data is retrieved via direct `Invoke-MgGraphRequest` calls
 
 ## API Permissions
 
@@ -119,6 +112,8 @@ Get-IntuneAssignments -AuthMethod Certificate -TenantId "contoso.onmicrosoft.com
   - macOS Shell Scripts
   - macOS Custom Attribute Scripts
   - Intune Branding Profiles
+  - App Configuration Policies (Managed Devices)
+  - iOS LoB App Provisioning Configurations
 - Shows included and excluded groups for each assignment
 - Displays filter information if configured
 - Export results to CSV
@@ -158,6 +153,16 @@ Supported authentication methods:
 Contributions are welcome! Please submit a pull request.
 
 ## Changelog
+
+### Version 1.1.0 - June 2026
+- 🏗️ Eliminated all Microsoft Graph Beta SDK module dependencies except `Microsoft.Graph.Authentication`
+  - All policy retrieval now uses direct `Invoke-MgGraphRequest` calls — no SDK cmdlets required
+  - Added `Invoke-GraphPaginated` helper for transparent pagination across all endpoints
+  - Added `Get-FilterSuffix` helper and unified assignment-loop logic across all functions
+- ✨ Added support for App Configuration Policies (Managed Devices)
+  - Covers `deviceAppManagement/mobileAppConfigurations` (distinct from App Protection Policies)
+- ✨ Added support for iOS LoB App Provisioning Configurations
+  - Covers `deviceAppManagement/iosLobAppProvisioningConfigurations`
 
 ### Version 1.0.15 - May 2026
 - ✨ Added support for 7 new assignment policy types:
